@@ -22,10 +22,17 @@ with open(path2, "rb") as f:
 
 input_text1 = data_obj1["input_text"]
 input_tokens1 = data_obj1["input_tokens"]
+decoded_input_tokens1 = data_obj1["decoded_input_tokens"]
 print(len(input_tokens1))
 
+# %%
+decoded_input_tokens1
+# %%
+data_obj1.keys()
+# %%
 input_text2 = data_obj2["input_text"]
 input_tokens2 = data_obj2["input_tokens"]
+decoded_input_tokens2 = data_obj2["decoded_input_tokens"]
 print(len(input_tokens2))
 
 attn_matrices1 = data_obj1["attention_matrices"]
@@ -33,7 +40,9 @@ attn_matrices2 = data_obj2["attention_matrices"]
 
 # %%
 # Select a layer for visualization
-layer_to_visualize = 10
+max_num_layers = len(data_obj1["attention_matrices"]["q"])
+layer_to_visualize = 20
+assert layer_to_visualize < max_num_layers
 
 # Extract raw Q, K, V matrices
 q1 = attn_matrices1["q"][layer_to_visualize]
@@ -47,16 +56,14 @@ v2 = attn_matrices2["v"][layer_to_visualize]
 print(f"Q1 shape: {q1.shape} \nK1 shape: {k1.shape} \nV1 shape: {v1.shape}")
 
 # %% [markdown]
-# ## Understanding LLaMA Attention Projection Shapes
+# ## Visualizing Raw Projections (KV Cache Components)
 #
 # In LLaMA models, the raw projections have these shapes after squeezing:
 # - Q: [seq_len, hidden_size] where hidden_size = num_heads * head_dim for Q
 # - K: [seq_len, kv_dim] where kv_dim = num_heads * head_dim for K/V
 #
-# For proper KV cache visualization, we need to understand how these matrices are used in the model.
+# To visualize what's actually stored in the KV cache, we'll look at the raw K and V matrices.
 
-# %%
-# First, let's examine the shapes more carefully
 q1_2d = torch.squeeze(q1)  # [seq_len, q_dim]
 k1_2d = torch.squeeze(k1)  # [seq_len, k_dim]
 v1_2d = torch.squeeze(v1)  # [seq_len, v_dim]
@@ -65,11 +72,6 @@ print(f"Q1 shape after squeeze: {q1_2d.shape}")
 print(f"K1 shape after squeeze: {k1_2d.shape}")
 print(f"V1 shape after squeeze: {v1_2d.shape}")
 
-# %% [markdown]
-# ## Approach 1: Visualizing Raw Projections (KV Cache Components)
-#
-# To visualize what's actually stored in the KV cache, we'll look at the raw K and V matrices.
-
 # %%
 # Visualize raw K matrix (what would be cached)
 plot_single_matrix(
@@ -77,6 +79,7 @@ plot_single_matrix(
     matrix_type="K",
     plot_title=f"Raw Key Matrix (Cached in KV Cache) for Layer {layer_to_visualize}",
     cmap="coolwarm",
+    tokens=decoded_input_tokens1,
 )
 
 # Visualize raw V matrix (what would be cached)
@@ -85,6 +88,7 @@ plot_single_matrix(
     matrix_type="V",
     plot_title=f"Raw Value Matrix (Cached in KV Cache) for Layer {layer_to_visualize}",
     cmap="coolwarm",
+    tokens=decoded_input_tokens1,
 )
 
 

@@ -9,9 +9,10 @@ import pickle
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from typing import Dict, Any
+import pandas as pd
 
 # custom utils
-from attention_helpers.qkvo_hooks import get_all_qkvo
+from attention_helpers.qkvo_hooks import capture_model_attention_internals
 
 # %% [markdown]
 # ## Load model and tokenizer
@@ -42,6 +43,8 @@ def generate_text(
     max_tokens=100,
     temperature=0,
     verbose=True,
+    padding=True,
+    truncation=True,
 ):
     """
     Generate text using TinyLlama model with chat template
@@ -57,14 +60,45 @@ def generate_text(
         str: Generated text
     """
     # Apply chat template to format messages
-    prompt = tokenizer.apply_chat_template(messages, tokenize=False, padding=True)
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        padding=padding,
+        truncation=truncation,
+    )
 
-    # Encode the prompt
-    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+    # Encode the prompt with attention mask
+    inputs = tokenizer(
+        prompt,
+        return_tensors="pt",
+        padding=padding,
+        truncation=truncation,
+        return_attention_mask=True,  # Explicitly request attention mask
+    )
 
-    # Generate
+    if verbose:
+        # Print tokenization information
+        print("\n\nTokenization Information:")
+        text = tokenizer.apply_chat_template(messages, tokenize=False, padding=False)
+        tokens = tokenizer.encode(
+            text, padding=False, truncation=True, return_tensors="pt"
+        )
+        print(f"Input sequence length: {tokens.shape[1]} tokens")
+
+        # Create DataFrame for token visualization
+        token_data = {
+            "token_index": range(len(tokens[0])),
+            "token": tokens[0].tolist(),
+            "decoded_token": [tokenizer.decode([t]) for t in tokens[0]],
+        }
+        df = pd.DataFrame(token_data)
+        print("\nToken Details:")
+        print(df.to_string(index=False))
+
+    # Generate with attention mask
     outputs = model.generate(
         inputs.input_ids,
+        attention_mask=inputs.attention_mask,  # Add attention mask
         max_new_tokens=max_tokens,
         do_sample=(temperature > 0),
         pad_token_id=tokenizer.eos_token_id,
@@ -73,9 +107,12 @@ def generate_text(
     # Decode and return the generated text, keeping special tokens
     decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=False)
     if verbose:
-        for token_num, token in enumerate(decoded_output.split()):
-            print(f"Token {token_num}: {token}")
-
+        print(
+            f"\nGenerated tokens: {len(outputs[0]) - len(inputs.input_ids[0])} tokens"
+        )
+        print(f"Total tokens in final sequence: {len(outputs[0])}")
+        print(f"\nGenerated Text:\n{decoded_output}")
+        print("--------------------------------")
     return decoded_output
 
 
@@ -93,73 +130,16 @@ messages = [
 ]
 
 generated_text = generate_text(messages, model, tokenizer, verbose=True)
-print(f"\nGenerated Text:\n{generated_text}")
 
 
 # %% [markdown]
 # ## Get Q, K, V, O projections
 
-
-def analyze_attention_patterns(
-    messages,
-    model,
-    tokenizer,
-    analysis_name="",
-    padding=True,
-    truncation=True,
-    return_attention_mask=True,
-) -> Dict[str, Any]:
-    """
-    Analyze attention patterns for a given input message.
-
-    Args:
-        messages (list): List of message dictionaries with 'role' and 'content'
-        model: The language model to use
-        tokenizer: The tokenizer to use
-        analysis_name (str): Name identifier for the analysis
-
-    Returns:
-        dict: Dictionary containing all Q, K, V, O projections across layers and the input text
-    """
-    input_text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        padding=True,
-    )
-    input_tokens = tokenizer.encode(
-        input_text,
-        padding=True,
-        truncation=True,
-        return_tensors="pt",
-    )
-    attention_matrices = get_all_qkvo(
-        model=model,
-        input_text=input_text,
-        tokenizer=tokenizer,
-        padding=True,
-        truncation=True,
-    )
-
-    # Print shapes for first and last layer as example
-    first_layer = 0
-
-    print(f"\nAttention Analysis for {analysis_name}")
-    print("Attention layer shapes:")
-    print(f"Q projection: {attention_matrices['q'][first_layer].shape}")
-    print(f"K projection: {attention_matrices['k'][first_layer].shape}")
-    print(f"V projection: {attention_matrices['v'][first_layer].shape}")
-    print(f"O projection: {attention_matrices['o'][first_layer].shape}")
-
-    return {
-        "input_text": input_text,
-        "input_tokens": input_tokens,
-        "attention_matrices": attention_matrices,
-    }
-
+SYSTEM_PROMPT = "You are a helpful assistant."
 
 # Example usage with two different queries
 msg1 = [
-    {"role": "system", "content": "You are a friendly chat assistant"},
+    {"role": "system", "content": SYSTEM_PROMPT},
     {
         "role": "user",
         "content": "What is the capital of India?",
@@ -167,43 +147,32 @@ msg1 = [
 ]
 
 msg2 = [
-    {"role": "system", "content": "You are a friendly chat assistant"},
+    {"role": "system", "content": SYSTEM_PROMPT},
     {
         "role": "user",
         "content": "What is the capital of France? Answer the question in just one word not more than that.",
     },
 ]
 
-# Print tokenization information for both messages
-print("\nTokenization Information:")
-for i, msg in enumerate([msg1, msg2], 1):
-    text = tokenizer.apply_chat_template(msg, tokenize=False, padding=False)
-    tokens = tokenizer.encode(text, padding=False, truncation=True, return_tensors="pt")
-    print(f"\nMessage {i}:")
-    print(f"Text length: {len(text)}")
-    print(f"Token sequence length: {tokens.shape[1]}")
-    print(f"Tokens: {tokens.tolist()[0]}")
-    print(f"Decoded tokens: {[tokenizer.decode([t]) for t in tokens[0]]}")
-
 
 # Analyze attention patterns for both inputs
-data_obj1 = analyze_attention_patterns(
+data_obj1 = capture_model_attention_internals(
     messages=msg1,
     model=model,
     tokenizer=tokenizer,
-    analysis_name="Query 1",
     padding=True,
     truncation=True,
     return_attention_mask=True,
+    verbose=True,
 )
-data_obj2 = analyze_attention_patterns(
+data_obj2 = capture_model_attention_internals(
     messages=msg2,
     model=model,
     tokenizer=tokenizer,
-    analysis_name="Query 2",
     padding=True,
     truncation=True,
     return_attention_mask=True,
+    verbose=True,
 )
 # %% [markdown]
 # ## Store Q, K, V, O projections

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
+import numpy as np
 
 
 # Function to visualize attention patterns with GQA structure
@@ -71,6 +72,7 @@ def plot_single_matrix(
     cmap="viridis",
     xlabel="Hidden Dimension",
     ylabel="Token",
+    tokens=None,
 ):
     """
     Visualize a single attention matrix as a heatmap.
@@ -109,6 +111,25 @@ def plot_single_matrix(
     plt.figure(figsize=(12, 8))
     sns.heatmap(matrix, cmap=cmap, center=0 if cmap == "coolwarm" else None)
     plt.title(f"{plot_title}{shape_info}")
+
+    if tokens is not None:
+        # Create ytick labels combining index and token
+        new_line_print_handle = lambda x: x.replace("\n", "\\n")
+
+        ytick_labels = [
+            f"{new_line_print_handle(token)} :: {i:02d}"
+            for i, token in enumerate(tokens)
+        ]
+
+        plt.yticks(
+            np.arange(len(tokens)) + 0.5,  # Center the labels
+            ytick_labels,
+            rotation=0,
+            ha="right",
+            va="center",
+            fontsize=8,
+        )
+
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.tight_layout()

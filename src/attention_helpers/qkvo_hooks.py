@@ -1,6 +1,6 @@
 import torch
 from transformers import LlamaForCausalLM
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 
 class LlamaAttentionExtractor:
@@ -203,41 +203,64 @@ def get_all_qkvo(
     return all_qkvo
 
 
-# Example usage:
-"""
-from transformers import LlamaForCausalLM, LlamaTokenizer
+def capture_model_attention_internals(
+    messages,
+    model,
+    tokenizer,
+    analysis_name="",
+    padding=True,
+    truncation=True,
+    return_attention_mask=True,
+    verbose=True,
+) -> Dict[str, Any]:
+    """
+    Captures and returns the internal attention mechanism components (Q, K, V, O projections)
+    for a given input message across all model layers.
 
-# Load model and tokenizer
-model_name = "meta-llama/Llama-2-7b-hf"  # or your local model path
-model = LlamaForCausalLM.from_pretrained(model_name).to("cuda")
-tokenizer = LlamaTokenizer.from_pretrained(model_name)
+    Args:
+        messages (list): List of message dictionaries with 'role' and 'content'
+        model: The language model to use
+        tokenizer: The tokenizer to use
+        padding (bool): Whether to pad sequences
+        truncation (bool): Whether to truncate sequences
+        return_attention_mask (bool): Whether to return attention mask
 
-# Extract attention matrices
-input_text = "Hello, how are you today?"
+    Returns:
+        dict: Dictionary containing all Q, K, V, O projections across layers and the input text
+    """
+    input_text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        padding=padding,
+        truncation=truncation,
+    )
+    input_tokens = tokenizer.encode(
+        input_text,
+        padding=padding,
+        truncation=truncation,
+        return_tensors="pt",
+    )
+    attention_matrices = get_all_qkvo(
+        model=model,
+        input_text=input_text,
+        tokenizer=tokenizer,
+        padding=padding,
+        truncation=truncation,
+    )
 
-# Option 1: Get outputs organized by layer
-layer_outputs = extract_qkvo_outputs(model, input_text, tokenizer)
+    # Print shapes for first and last layer as example
+    first_layer = 0
 
-# Access the outputs for a specific layer
-layer_idx = 0
-q_proj_output = layer_outputs[layer_idx]['q_proj']
-k_proj_output = layer_outputs[layer_idx]['k_proj']
-v_proj_output = layer_outputs[layer_idx]['v_proj']
-o_proj_output = layer_outputs[layer_idx]['o_proj']
+    if verbose:
+        print("Attention layer shapes:")
+        print(f"Q projection: {attention_matrices['q'][first_layer].shape}")
+        print(f"K projection: {attention_matrices['k'][first_layer].shape}")
+        print(f"V projection: {attention_matrices['v'][first_layer].shape}")
+        print(f"O projection: {attention_matrices['o'][first_layer].shape}")
 
-print(f"Q projection shape for layer {layer_idx}: {q_proj_output.shape}")
-
-# Option 2: Get all outputs organized by projection type
-all_qkvo = get_all_qkvo(model, input_text, tokenizer)
-
-# Access all Q projections across all layers
-all_q_projections = all_qkvo['q']  # This is a list where index corresponds to layer
-
-# Access Q projection for a specific layer
-q_layer_5 = all_qkvo['q'][5]
-
-# Example of analyzing all layers' outputs
-for layer_idx, q_proj in enumerate(all_qkvo['q']):
-    print(f"Layer {layer_idx} Q projection shape: {q_proj.shape}")
-    print(f"Layer {layer_idx} Q mean value: {q_proj.mean().item()}")
-"""
+    return {
+        "input_text": input_text,
+        "input_tokens": input_tokens,
+        "decoded_input_tokens": [tokenizer.decode([t]) for t in input_tokens[0]],
+        "attention_matrices": attention_matrices,
+    }
