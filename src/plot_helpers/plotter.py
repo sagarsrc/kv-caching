@@ -190,3 +190,247 @@ def plot_matrix_comparison(
         plt.show()
 
     return difference_matrix
+
+
+def _plot_attention_row(
+    axes_row,
+    head_idx,
+    original_attn,
+    cached_attn,
+    diff_attn,
+    common_prefix_length,
+    show_xlabel,
+):
+    """Plot a row of attention visualizations for a single head.
+
+    Args:
+        axes_row: Row of matplotlib axes to plot on
+        head_idx: Index of attention head being visualized
+        original_attn: Original attention matrix
+        cached_attn: Attention matrix with KV caching
+        diff_attn: Difference between original and cached attention
+        common_prefix_length: Length of common prefix between inputs
+        show_xlabel: Whether to show x-axis labels
+    """
+    # Plot original attention
+    im0 = axes_row[0].imshow(original_attn, cmap="coolwarm")
+    axes_row[0].set_title(f"Head {head_idx}: Original Attention")
+    if show_xlabel:
+        axes_row[0].set_xlabel("Key Position")
+    axes_row[0].set_ylabel("Query Position")
+    plt.colorbar(im0, ax=axes_row[0], fraction=0.046, pad=0.04)
+
+    # Plot cached attention
+    im1 = axes_row[1].imshow(cached_attn, cmap="coolwarm")
+    axes_row[1].set_title(f"Head {head_idx}: With KV Caching")
+    if show_xlabel:
+        axes_row[1].set_xlabel("Key Position")
+    plt.colorbar(im1, ax=axes_row[1], fraction=0.046, pad=0.04)
+
+    # Plot difference
+    im2 = axes_row[2].imshow(diff_attn, cmap="hot", vmin=0, vmax=0.001)
+    axes_row[2].set_title(f"Head {head_idx}: Difference")
+    if show_xlabel:
+        axes_row[2].set_xlabel("Key Position")
+    plt.colorbar(im2, ax=axes_row[2], fraction=0.046, pad=0.04)
+
+    # Add common prefix box if applicable
+    if common_prefix_length > 0:
+        for j in range(3):
+            rect = plt.Rectangle(
+                (0, 0),
+                common_prefix_length,
+                common_prefix_length,
+                fill=False,
+                edgecolor="white",
+                linewidth=2,
+            )
+            axes_row[j].add_patch(rect)
+
+
+def plot_attention_matrices(
+    original_attention, cached_attention, common_prefix_length, max_tokens
+):
+    """Plot attention matrices comparison for multiple heads."""
+    heads_to_viz = [0, 1, 2, 3]
+    fig, axes = plt.subplots(len(heads_to_viz), 3, figsize=(18, 4 * len(heads_to_viz)))
+
+    for i, head_idx in enumerate(heads_to_viz):
+        original_attn = original_attention["heads"][
+            f"q_head_{head_idx}_kv_head_{head_idx//4}"
+        ]["attention_probs"]
+        cached_attn = cached_attention["heads"][
+            f"q_head_{head_idx}_kv_head_{head_idx//4}"
+        ]["attention_probs"]
+
+        original_attn_viz = original_attn[:max_tokens, :max_tokens].cpu().numpy()
+        cached_attn_viz = cached_attn[:max_tokens, :max_tokens].cpu().numpy()
+        diff_attn = np.abs(original_attn_viz - cached_attn_viz)
+
+        _plot_attention_row(
+            axes[i],
+            head_idx,
+            original_attn_viz,
+            cached_attn_viz,
+            diff_attn,
+            common_prefix_length,
+            i == len(heads_to_viz) - 1,
+        )
+
+    plt.tight_layout()
+    return diff_attn
+
+
+def get_axis_limits(k1_mh, k2_mh, v1_mh, v2_mh, hybrid_k, hybrid_v, head_idx, dim):
+    """Get common axis limits for all plots."""
+    # Get all K values
+    k1_vals = k1_mh[head_idx, :, dim].cpu().numpy()
+    k2_vals = k2_mh[head_idx, :, dim].cpu().numpy()
+    k_hybrid_vals = hybrid_k[head_idx, : k2_mh.shape[1], dim].cpu().numpy()
+
+    # Get all V values
+    v1_vals = v1_mh[head_idx, :, dim].cpu().numpy()
+    v2_vals = v2_mh[head_idx, :, dim].cpu().numpy()
+    v_hybrid_vals = hybrid_v[head_idx, : v2_mh.shape[1], dim].cpu().numpy()
+
+    # Calculate limits with some padding
+    k_min = min(k1_vals.min(), k2_vals.min(), k_hybrid_vals.min())
+    k_max = max(k1_vals.max(), k2_vals.max(), k_hybrid_vals.max())
+    v_min = min(v1_vals.min(), v2_vals.min(), v_hybrid_vals.min())
+    v_max = max(v1_vals.max(), v2_vals.max(), v_hybrid_vals.max())
+
+    # Add 10% padding
+    k_range = k_max - k_min
+    v_range = v_max - v_min
+    k_limits = (k_min - 0.1 * k_range, k_max + 0.1 * k_range)
+    v_limits = (v_min - 0.1 * v_range, v_max + 0.1 * v_range)
+
+    return k_limits, v_limits
+
+
+def plot_kv_cache_verification(
+    k_mh,
+    v_mh,
+    common_prefix_length,
+    k_limits,
+    v_limits,
+    max_seq_len,
+    head_idx=5,
+    input_name="input1",
+):
+    """Plot K and V values with cached and non-cached regions clearly marked."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
+    # Get full sequence K and V vectors for a single dimension
+    dim = k_mh.shape[-1] // 2  # Use middle dimension for clearer visualization
+    k_vector = k_mh[head_idx, :, dim].cpu().numpy()  # [seq_len]
+    v_vector = v_mh[head_idx, :, dim].cpu().numpy()
+
+    # Create x-axis positions
+    positions = np.arange(len(k_vector))
+
+    # Plot K values
+    ax1.plot(positions, k_vector, label="K values", color="blue", linewidth=2)
+    ax1.set_ylim(k_limits)
+    ax1.set_xlim(0, max_seq_len)  # Set consistent x-axis limit
+
+    # Add background shading for cached region
+    ax1.axvspan(
+        0, common_prefix_length - 1, color="yellow", alpha=0.2, label="Cached region"
+    )
+    ax1.axvline(x=common_prefix_length - 1, color="black", linestyle="--", alpha=0.5)
+    ax1.set_title(f"K values - Head {head_idx}, Dimension {dim}")
+    ax1.set_xlabel("Token Position")
+    ax1.set_ylabel("Value")
+    ax1.legend(loc="lower right")
+
+    # Plot V values
+    ax2.plot(positions, v_vector, label="V values", color="blue", linewidth=2)
+    ax2.set_ylim(v_limits)
+    ax2.set_xlim(0, max_seq_len)  # Set consistent x-axis limit
+
+    # Add background shading for cached region
+    ax2.axvspan(
+        0, common_prefix_length - 1, color="yellow", alpha=0.2, label="Cached region"
+    )
+    ax2.axvline(x=common_prefix_length - 1, color="black", linestyle="--", alpha=0.5)
+    ax2.set_title(f"V values - Head {head_idx}, Dimension {dim}")
+    ax2.set_xlabel("Token Position")
+    ax2.legend(loc="lower right")
+
+    plt.suptitle(f"{input_name} KV Values\nYellow region shows what gets cached")
+    plt.tight_layout()
+    return fig
+
+
+def plot_hybrid_verification(
+    k_mh,
+    v_mh,
+    hybrid_k,
+    hybrid_v,
+    common_prefix_length,
+    k_limits,
+    v_limits,
+    max_seq_len,
+    head_idx=5,
+):
+    """Plot K and V values with hybrid cache verification for input2."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
+    # Get full sequence K and V vectors for a single dimension
+    dim = k_mh.shape[-1] // 2
+    k_vector = k_mh[head_idx, :, dim].cpu().numpy()
+    k_hybrid_vector = hybrid_k[head_idx, : k_vector.shape[0], dim].cpu().numpy()
+    v_vector = v_mh[head_idx, :, dim].cpu().numpy()
+    v_hybrid_vector = hybrid_v[head_idx, : v_vector.shape[0], dim].cpu().numpy()
+
+    positions = np.arange(len(k_vector))
+
+    # Plot K values
+    ax1.plot(positions, k_vector, label="K from input2", color="blue", linewidth=2)
+    ax1.plot(
+        positions,
+        k_hybrid_vector,
+        label="K hybrid",
+        color="red",
+        linewidth=2,
+        linestyle="--",
+    )
+    ax1.set_ylim(k_limits)
+    ax1.set_xlim(0, max_seq_len)
+
+    ax1.axvspan(
+        0, common_prefix_length - 1, color="yellow", alpha=0.2, label="Cached region"
+    )
+    ax1.axvline(x=common_prefix_length - 1, color="black", linestyle="--", alpha=0.5)
+    ax1.set_title(f"K values - Head {head_idx}, Dimension {dim}")
+    ax1.set_xlabel("Token Position")
+    ax1.set_ylabel("Value")
+    ax1.legend(loc="lower right")
+
+    # Plot V values
+    ax2.plot(positions, v_vector, label="V from input2", color="blue", linewidth=2)
+    ax2.plot(
+        positions,
+        v_hybrid_vector,
+        label="V hybrid",
+        color="red",
+        linewidth=2,
+        linestyle="--",
+    )
+    ax2.set_ylim(v_limits)
+    ax2.set_xlim(0, max_seq_len)
+
+    ax2.axvspan(
+        0, common_prefix_length - 1, color="yellow", alpha=0.2, label="Cached region"
+    )
+    ax2.axvline(x=common_prefix_length - 1, color="black", linestyle="--", alpha=0.5)
+    ax2.set_title(f"V values - Head {head_idx}, Dimension {dim}")
+    ax2.set_xlabel("Token Position")
+    ax2.legend(loc="lower right")
+
+    plt.suptitle(
+        "Input 2 KV Cache Verification\nYellow region shows cached tokens from Input 1"
+    )
+    plt.tight_layout()
+    return fig
