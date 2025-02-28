@@ -20,6 +20,11 @@ def visualize_gqa_attention(
     fig, axes = plt.subplots(2, 4, figsize=(20, 10), dpi=300)
     axes = axes.flatten()
 
+    # Set a global title for the subplots
+    fig.suptitle(
+        f"{title_prefix} Average Attention Patterns Across KV Heads", fontsize=20
+    )
+
     # For each KV head, plot the average attention pattern across all query heads that share it
     for kv_head_idx in range(num_kv_heads):
         # Find all query heads that share this KV head
@@ -41,7 +46,6 @@ def visualize_gqa_attention(
         avg_attn_pattern = torch.stack(attn_patterns).mean(dim=0)
 
         # Plot the average attention pattern
-
         ax = axes[kv_head_idx]
         sns.heatmap(
             avg_attn_pattern.cpu().detach().numpy(),
@@ -50,7 +54,7 @@ def visualize_gqa_attention(
             cbar=True,
         )
         ax.set_title(
-            f"{title_prefix} KV Head {kv_head_idx} (avg of {len(q_heads_for_this_kv)} Q heads)"
+            f"KV Head {kv_head_idx} (avg of {len(q_heads_for_this_kv)} Q heads)"
         )
         ax.set_xlabel("Key Position")
         ax.set_ylabel("Query Position")

@@ -87,33 +87,29 @@ plot_single_matrix(
     cmap="coolwarm",
 )
 
-# %% [markdown]
-# ## Approach 2: Proper Reshaping for Multi-Head Attention
-#
-# The actual attention calculation requires reshaping into multiple heads.
-
-
-# %%
-# For LLaMA, we need to reshape properly
-
-# %%
-# Reshape into multi-head format
-q1_mh, k1_mh, v1_mh = reshape_llama_attention(q1, k1, v1, verbose=True)
-q2_mh, k2_mh, v2_mh = reshape_llama_attention(q2, k2, v2, verbose=False)
-
-# %%
 
 # %% [markdown]
-# ## Visualizing Attention Scores for a Single Head
+# ## Visualizing Attention Scores
 
 # %% [markdown]
 # ## Compute attention scores for all heads
 # Initialize dictionaries to store attention scores for all heads
 
+# Reshape into multi-head format
+q1_mh, k1_mh, v1_mh = reshape_llama_attention(q1, k1, v1, verbose=True)
+q2_mh, k2_mh, v2_mh = reshape_llama_attention(q2, k2, v2, verbose=False)
 
 # Compute attention separately for each message
 attention_msg1 = compute_multihead_attention(q1_mh, k1_mh, v1_mh)
 attention_msg2 = compute_multihead_attention(q2_mh, k2_mh, v2_mh)
+
+# Print Grouping of queries
+# Notice how multiple queries are grouped together for the same KV head
+print(f"Grouping of queries:")
+for i in list(attention_msg1["heads"].keys()):
+    print(i)
+
+print("---")
 
 # Print shapes for verification
 print("\nMessage 1 attention shapes:")
@@ -139,9 +135,8 @@ print(
 )
 
 
-# %%
+# %% [markdown]
+# ## Visualizing Attention Patterns
 
-
-# Visualize attention patterns for both messages
 visualize_gqa_attention(attention_msg1, title_prefix="Message 1 -")
 visualize_gqa_attention(attention_msg2, title_prefix="Message 2 -")
