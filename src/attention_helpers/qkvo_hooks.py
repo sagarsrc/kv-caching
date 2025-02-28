@@ -107,6 +107,9 @@ def extract_qkvo_outputs(
     model: LlamaForCausalLM,
     input_text: str,
     tokenizer,
+    padding: bool = False,
+    truncation: bool = True,
+    return_attention_mask: bool = True,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     layer_indices: Optional[List[int]] = None,
 ) -> Dict[int, Dict[str, torch.Tensor]]:
@@ -123,8 +126,14 @@ def extract_qkvo_outputs(
     Returns:
         Dictionary mapping layer indices to dictionaries containing the Q, K, V, O matrices
     """
-    # Tokenize input
-    inputs = tokenizer(input_text, return_tensors="pt").to(device)
+    # Tokenize input with proper padding
+    inputs = tokenizer(
+        input_text,
+        return_tensors="pt",
+        padding=padding,
+        truncation=truncation,
+        return_attention_mask=return_attention_mask,
+    ).to(device)
 
     # Set up extractor
     extractor = LlamaAttentionExtractor(model)
@@ -146,6 +155,9 @@ def get_all_qkvo(
     model: LlamaForCausalLM,
     input_text: str,
     tokenizer,
+    padding: bool = False,
+    truncation: bool = True,
+    return_attention_mask: bool = True,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> Dict[str, List[torch.Tensor]]:
     """
@@ -162,7 +174,15 @@ def get_all_qkvo(
         where the index in the list corresponds to the layer index
     """
     # Get outputs organized by layer
-    layer_outputs = extract_qkvo_outputs(model, input_text, tokenizer, device)
+    layer_outputs = extract_qkvo_outputs(
+        model=model,
+        input_text=input_text,
+        tokenizer=tokenizer,
+        padding=padding,
+        truncation=truncation,
+        return_attention_mask=return_attention_mask,
+        device=device,
+    )
 
     # Reorganize by projection type
     num_layers = len(model.model.layers)

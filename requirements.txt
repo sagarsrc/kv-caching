@@ -2,8 +2,6 @@ transformers
 jupyter
 pandas
 tqdm
-nvitop
-scikit-learn
 seaborn
 matplotlib
 torch
