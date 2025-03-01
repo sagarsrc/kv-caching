@@ -23,17 +23,17 @@ This repository provides a stupidly simple demonstration and visualization of Ke
 
 The source code is organized into three main components:
 
-1. **Attention Projections (get_attention_projections.py)**
+1. **Attention Projections ([get_attention_projections.py](src/get_attention_projections.py))**
    - Loads TinyLlama model
    - Extracts Query (Q), Key (K), Value (V), and Output (O) projections
    - Captures internal attention states during inference
 
-2. **Attention Visualization (visualize_attention.py)**
+2. **Attention Visualization ([visualize_attention.py](src/visualize_attention.py))**
    - Visualizes raw attention patterns
    - Demonstrates Grouped Query Attention (GQA) mechanics
    - Shows attention distribution across heads
 
-3. **KV Caching Visualization (visualize_kv_caching.py)**
+3. **KV Caching Visualization ([visualize_kv_caching.py](src/visualize_kv_caching.py))**
    - Demonstrates how KV caching works
    - Visualizes attention patterns with and without caching
    - Shows cache reuse across multiple inputs
@@ -41,10 +41,7 @@ The source code is organized into three main components:
 ### Demo Notebook (notebooks/)
 
 The `kv_cache_demo.ipynb` (and its Python equivalent) serves as a one-stop shop for the entire demonstration. It:
-- Walks through the KV caching process step by step
-- Shows practical examples of cache usage
-- Visualizes attention patterns and cache effects
-- Demonstrates performance benefits
+- All the things that scripts do but in a jupyter notebook!
 
 ## Technical Details
 
@@ -72,7 +69,9 @@ The repository demonstrates KV caching through the following approach:
 
 ## Getting Started
 
+```bash
 uv pip install -r requirements.txt
+```
 
 It's high time you use `uv` to install the dependencies!
 
